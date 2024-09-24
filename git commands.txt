@@ -1,0 +1,59 @@
+git init
+
+echo 'My first commit!' > README.txt
+
+git status
+
+
+git add README.txt
+
+	
+git commit
+
+
+	
+git commit -m 'Commit message for first commit!'
+
+
+echo 'Second commit!' > README.txt
+git add README.txt
+echo 'Or is it the third?' > README.txt
+git commit -m 'Another commit'
+
+git log
+
+
+	
+git log --all --graph --decorate --oneline
+
+
+	
+git branch <branch-name>
+
+
+	
+git branch second-branch
+
+
+git checkout second-branch
+
+
+
+echo 'The changes made in this branch...' >> README.txt 
+git add README.txt 
+git commit -m 'Start changes in second-branch'
+echo '... Only exist in this branch' >> README.txt 
+git add README.txt 
+git commit -m 'End changes in second-branch'
+
+
+git checkout master
+
+
+git checkout master
+git merge second-branch
+
+
+
+
+
