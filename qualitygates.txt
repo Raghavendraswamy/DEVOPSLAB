@@ -1,0 +1,266 @@
+pipeline {
+    agent any
+
+    stages {
+        stage('Build') {
+            steps {
+                echo 'Building the project...'
+                // Add your build commands here
+                sh 'echo Build complete.'
+            }
+        }
+
+        stage('Test') {
+            steps {
+                echo 'Running tests...'
+                // Simulated test command
+                script {
+                    def testResult = sh(script: 'run_tests.sh', return Status: true)
+                    if (testResult != 0) {
+                        error 'Tests failed. Please fix the issues.'
+                    } else {
+                        echo 'Tests passed successfully!'
+                    }
+                }
+            }
+        }
+
+        stage('Code Coverage Check') {
+            steps {
+                echo 'Checking code coverage...'
+                script {
+                    def coverage = sh(script: 'check_coverage.sh', returnStdout: true).trim()
+                    if (coverage.toInteger() < 80) { // Example threshold of 80%
+                        error "Code coverage is below the required threshold: ${coverage}%"
+                    } else {
+                        echo "Code coverage is acceptable: ${coverage}%"
+                    }
+                }
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                echo 'Deploying the application...'
+                // Add your deploy commands here
+                sh 'echo Deployment complete.'
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Pipeline completed successfully! 
+        }
+        failure {
+            echo 'Pipeline failed. Please check the logs.'
+        }
+        always {
+            echo 'Cleaning up resources...'
+        }
+    }
+}
+----------------------------------------------------------------------------------
+
+
+pipeline {
+    agent any
+
+    environment {
+        VENV = 'venv' // Virtual environment name
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm // Checkout code from the repository
+            }
+        }
+
+        stage('Set Up Environment') {
+            steps {
+                script {
+                    // Create and activate a virtual environment
+                    sh "python3 -m venv ${VENV}"
+                    sh ". ${VENV}/bin/activate"
+                }
+            }
+        }
+
+        stage('Install Dependencies') {
+            steps {
+                script {
+                    // Install necessary dependencies
+                    sh """
+                    . ${VENV}/bin/activate
+                    pip install -r requirements.txt
+                    pip install flake8 pytest pytest-cov
+                    """
+                }
+            }
+        }
+
+        stage('Linting') {
+            steps {
+                script {
+                    // Run flake8 for code linting
+                    sh """
+                    . ${VENV}/bin/activate
+                    flake8 .
+                    """
+                }
+            }
+        }
+
+        stage('Testing') {
+            steps {
+                script {
+                    // Run tests with coverage
+                    sh """
+                    . ${VENV}/bin/activate
+                    pytest --cov=. --cov-report=xml --cov-report=html
+                    """
+                }
+            }
+        }
+
+        stage('Quality Gate') {
+            steps {
+                script {
+                    // Check for code coverage (you can adjust the threshold as needed)
+                    def coverageThreshold = 80
+                    def coverageReport = readFile('coverage.xml')
+                    def coverageValue = coverageReport.find(/<coverage.*?line-rate="(.*?)"/)?.tokenize('"')[1].toFloat() * 100
+                    
+                    if (coverageValue < coverageThreshold) {
+                        error "Code coverage is below ${coverageThreshold}%. Current coverage: ${coverageValue}%"
+                    }
+                }
+            }
+        }
+
+        stage('Publish Results') {
+            steps {
+                // Publish coverage report
+                junit 'test-results/*.xml'
+                publishHTML(target: [
+                    reportName: 'Code Coverage',
+                    reportDir: 'htmlcov',
+                    reportFiles: 'index.html',
+                    alwaysLinkToLastBuild: true,
+                    keepAll: true
+                ])
+            }
+        }
+    }
+
+    post {
+        always {
+            cleanWs() // Clean up the workspace after the build
+        }
+        success {
+            echo 'Build was successful!'
+        }
+        failure {
+            echo 'Build failed!'
+        }
+    }
+}
+---------------------------------------------
+
+Implementing quality gates for static code analysis in a Jenkins pipeline is a great way to ensure that code quality meets your project's standards before allowing it to progress. Here’s a Jenkins pipeline example that integrates static analysis using tools like SonarQube, ESLint, or any other tool relevant to your project.
+
+Example Jenkinsfile
+groovy
+Copy code
+pipeline {
+    agent any
+
+    environment {
+        SONAR_SCANNER_HOME = '/opt/sonar-scanner' // Update this to your Sonar Scanner path
+        PROJECT_KEY = 'your_project_key' // Update to your project's key
+        PROJECT_NAME = 'your_project_name' // Update to your project's name
+        PROJECT_VERSION = '1.0' // Update to your project's version
+        SONAR_HOST_URL = 'http://your-sonarqube-server' // Update to your SonarQube server URL
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm // Checkout code from the repository
+            }
+        }
+
+        stage('Static Analysis') {
+            steps {
+                script {
+                    // Run SonarQube analysis
+                    sh """
+                    ${SONAR_SCANNER_HOME}/bin/sonar-scanner \
+                    -Dsonar.projectKey=${PROJECT_KEY} \
+                    -Dsonar.projectName=${PROJECT_NAME} \
+                    -Dsonar.projectVersion=${PROJECT_VERSION} \
+                    -Dsonar.sources=. \
+                    -Dsonar.host.url=${SONAR_HOST_URL} \
+                    -Dsonar.login=${SONAR_TOKEN} // Use token for authentication
+                    """
+                }
+            }
+        }
+
+        stage('Quality Gate') {
+            steps {
+                script {
+                    // Wait for SonarQube analysis to complete and retrieve quality gate status
+                    def sonarApiUrl = "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=${PROJECT_KEY}"
+                    def response = sh(script: "curl -s -u ${SONAR_TOKEN}: ${sonarApiUrl}", returnStdout: true).trim()
+                    def json = readJSON text: response
+                    def qualityGateStatus = json.projectStatus.status
+
+                    // Check the quality gate status
+                    if (qualityGateStatus != 'OK') {
+                        error "Quality gate failed: ${qualityGateStatus}. Please check SonarQube for details."
+                    } else {
+                        echo "Quality gate passed!"
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            cleanWs() // Clean up the workspace after the build
+        }
+        success {
+            echo 'Build was successful!'
+        }
+        failure {
+            echo 'Build failed!'
+        }
+    }
+}
+Breakdown of the Pipeline
+Checkout Stage: Pulls the latest code from the repository.
+
+Static Analysis Stage: Runs SonarQube static analysis using the Sonar Scanner:
+
+Configure the environment variables for the SonarQube project key, name, version, and host URL.
+Execute the Sonar Scanner command with the appropriate parameters.
+Quality Gate Stage:
+
+Uses the SonarQube API to check the quality gate status after the analysis is complete.
+If the quality gate fails, the pipeline is marked as failed.
+Post Actions:
+
+Cleans the workspace after the build.
+Logs success or failure messages.
+Additional Considerations
+SonarQube Configuration: Ensure SonarQube is properly configured and running.
+Sonar Token: You’ll need to create a SonarQube token for authentication. Use it as an environment variable (SONAR_TOKEN) in Jenkins credentials.
+Customization: Adapt the parameters for the Sonar Scanner according to your project's requirements (e.g., language-specific configurations).
+Error Handling: You may want to implement more robust error handling depending on your team's needs.
+This template provides a foundational approach to integrating static analysis with quality gates in your Jenkins pipeline. Adjust it as necessary to meet your specific project needs!
+
+-------------------------------------------------------------------------
+
